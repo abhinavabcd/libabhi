@@ -50,7 +50,7 @@ int netannounce(int istcp, char *server, int port) {
 }
 
 int netaccept(int fd, char *server, int *port){
-	int cfd, one;
+	int cfd;
 	struct sockaddr_in sa;
 	uchar *ip;
 	socklen_t len;
@@ -65,13 +65,14 @@ int netaccept(int fd, char *server, int *port){
 	}
 	if(server){
 		ip = (uchar*)&sa.sin_addr;
-		snprint(server, 16, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+		memcpy(server, ip, 4);//copy those 4 bytes, ipv4
 	}
 	if(port)
 		*port = ntohs(sa.sin_port);
+	/*set it non blocking!*/
 	fdnoblock(cfd);
-	one = 1;
-	setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, (char*)&one, sizeof one);
+	int _temp = 1;
+	setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, (char*)&_temp, sizeof(int));
 	TASKSTATE("netaccept succeeded");
 	return cfd;
 }

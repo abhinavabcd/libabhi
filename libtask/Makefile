@@ -1,4 +1,6 @@
+
 LIB=libtask.a
+LIB_O=libtask.o
 TCPLIBS=
 
 ASM=asm.o
@@ -13,46 +15,65 @@ OFILES=\
 	rendez.o\
 	task.o\
 
-all: $(LIB) primes tcpproxy testdelay
+
+
+all: $(LIB) $(LIB_O) primes tcpproxy testdelay
+
+lib: $(LIB_O)
+
 
 $(OFILES): taskimpl.h task.h 386-ucontext.h power-ucontext.h
 
 AS=g++ -c
 CC=g++
 
-CFLAGS= -g -Wall -fPIC -pipe  -c -fno-inline -fno-strict-aliasing \
-		-O2 -export-dynamic -Wno-deprecated -m64  \
-		 -D_GNU_SOURCE -D_REENTRANT -DVERSION_DEBUG \
+CFLAGS= -g -Wall -fPIC -pipe -fno-inline \
+		-O2 -D_GNU_SOURCE -D_REENTRANT -DVERSION_DEBUG \
 		-I. 
 
-LIBFLAGS=  -lpthread -ldl
+
+
+LIBS=
+
+
 
 %.o: %.S
 	$(AS) $*.S
 
 %.o: %.c
-	$(CC) $(CFLAGS) $*.c -o $@
+	$(CC) -c $(CFLAGS) $*.c -o $@
+
+
+WRAP_SYS_CALLS=-Wl,-wrap=write -Wl,-wrap=read
 
 $(LIB): $(OFILES)
-	ar rvc $(LIB) $(OFILES)
+	ar rvc -o $(LIB) $(OFILES)
+
+$(LIB_O): $(OFILES)
+	ld -o $(LIB_O) -r $(OFILES)
+
+
+# $(SHARED_LIB): $(OFILES)
+# 	$(CC) -fPIC -shared -o $(SHARED_LIB) $(OFILES) 
+# 	# or -Wl,--whole-archive libtask.a -Wl,--no-whole-archive
 
 primes: primes.o $(LIB)
-	$(CC) -o primes primes.o $(LIB) $(LIBFLAGS)
+	$(CC) $(WRAP_SYS_CALLS) -o primes primes.o $(LIB) $(LIBS)
 
 tcpproxy: tcpproxy.o $(LIB)
-	$(CC) -o tcpproxy tcpproxy.o $(LIB) $(TCPLIBS) $(LIBFLAGS)
+	$(CC) $(WRAP_SYS_CALLS)  -o tcpproxy tcpproxy.o $(LIB) $(TCPLIBS) $(LIBS)
 
 httpload: httpload.o $(LIB)
-	$(CC) -o httpload httpload.o $(LIB) $(LIBFLAGS)
+	$(CC) $(WRAP_SYS_CALLS)  -o httpload httpload.o $(LIB) $(LIBS)
 
 testdelay: testdelay.o $(LIB)
-	$(CC) -o testdelay testdelay.o $(LIB) $(LIBFLAGS)
+	$(CC) $(WRAP_SYS_CALLS)  -o testdelay testdelay.o $(LIB) $(LIBS)
 
 testdelay1: testdelay1.o $(LIB)
-	$(CC) -o testdelay1 testdelay1.o $(LIB) $(LIBFLAGS)
+	$(CC) $(WRAP_SYS_CALLS)  -o testdelay1 testdelay1.o $(LIB) $(LIBS)
 
 clean:
-	rm -f *.o primes tcpproxy testdelay testdelay1 httpload $(LIB)
+	rm -f *.o primes tcpproxy testdelay testdelay1 httpload $(LIB) $(LIB_O)
 
 install: $(LIB)
 	cp $(LIB) /usr/local/lib

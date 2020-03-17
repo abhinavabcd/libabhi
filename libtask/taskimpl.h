@@ -143,10 +143,6 @@ void setmcontext(const mcontext_t*);
 
 typedef struct Context Context;
 
-enum
-{
-	STACK = 8192
-};
 
 struct Context
 {
@@ -178,13 +174,20 @@ struct Task{
 
 	int8_t _state;
 
+	//this tasks index in the alltasksslot array
 	int	alltaskslot;
+
 	void	(*startfn)(void*);
 	void	*startarg;
 	void	*udata;
 };
 
 void	taskready(Task*);
+
+/*
+	switch back to scheduler. please hold the reference to current task to wake it up later
+	If you are not holding it, that task is lost and memory leaks.
+*/
 void	taskswitch(void);
 
 void	addtask(Tasklist*, Task*);

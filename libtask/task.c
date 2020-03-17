@@ -3,6 +3,7 @@
 #include "taskimpl.h"
 #include <fcntl.h>
 #include <stdio.h>
+#include <sys/syscall.h>
 
 /*inidicates number of runnings tasks*/
 __thread int	taskcount;
@@ -34,7 +35,6 @@ void taskdebug(char *fmt, ...){
 	Task *t;
 	char *p;
 	static int fd = -1;
-
 	va_start(arg, fmt);
 	vfprint(1, fmt, arg);
 	va_end(arg);
@@ -135,13 +135,10 @@ static Task* taskalloc(void (*fn)(void*), void *arg, uint stack){
 	return t;
 }
 
-int taskcreate(void (*fn)(void*), void *arg, uint stack){
-	int id;
+Task* taskcreateraw(void (*fn)(void*), void *arg, uint stack){
 	Task *t;
-
 	t = taskalloc(fn, arg, stack);
 	taskcount++;
-	id = t->id;
 	if(nalltask%64 == 0){
 		alltask = (Task **)realloc(alltask, (nalltask+64)*sizeof(alltask[0]));
 		if(alltask == NULL){
@@ -151,8 +148,13 @@ int taskcreate(void (*fn)(void*), void *arg, uint stack){
 	}
 	t->alltaskslot = nalltask;
 	alltask[nalltask++] = t;
+	return t;
+}
+
+int taskcreate(void (*fn)(void*), void *arg, uint stack){
+	Task *t = taskcreateraw(fn, arg, stack);
 	taskready(t);
-	return id;
+	return t->id;
 }
 /*switch to scheduler, don't call this directly without putting to queue, otherwise the context is lost forever*/
 void taskswitch(void){
@@ -201,24 +203,24 @@ static void contextswitch(Context *from, Context *to){
 	}
 }
 
-static void taskscheduler(void){
+void taskscheduler(void){
 	int i;
 	Task *t;
 
 	TASKDEBUG("scheduler enter");
 	for(;;){
 		if(taskcount == 0)
-			exit(taskexitval);
+			break;
 		t = taskrunqueue.head;
 		if(t == NULL){
 			fprint(2, "no runnable tasks! %d tasks stalled\n", taskcount);
-			exit(1);
+			break;
 		}
 		deltask(&taskrunqueue, t); // remove it from the queue
 		t->_state = 0;
 		taskrunning = t;
 		_tasknswitch++;
-		TASKDEBUG("run %d %d (%s)\n", _tasknswitch, t->id, t->name);
+		TASKDEBUG("run %d, %d (%s)\n",syscall(__NR_gettid), t->id, t->name);
 		//switch to that task on queue
 		contextswitch(&taskschedcontext, &t->context);
 		//print("back in scheduler\n");
@@ -231,10 +233,14 @@ static void taskscheduler(void){
 			free(t);
 		}
 	}
+	/*free all tasks ourself?, or let the application hanle the cleanup ?*/
+	while(nalltask > 0){
+		free(alltask[--nalltask]);
+	}
 }
 
 void* taskdata(void){
-	return taskrunning->udata;
+	return taskrunning ? taskrunning->udata : NULL;
 }
 
 
@@ -305,53 +311,6 @@ static void taskinfo(int s){
 }
 
 #endif
-
-
-/*
- * startup
- */
-static int taskargc;
-static char **taskargv;
-
-static void taskmainstart(void *v){
-	TASKNAME("taskmain");
-	taskmain(taskargc, taskargv);
-}
-
-
-int onloop(void *arg){
-	TASKDEBUG("%d\n", (size_t)arg);
-	return 1;
-}
-
-
-int main(int argc, char **argv){
-	struct sigaction sa, osa;
-
-	memset(&sa, 0, sizeof sa);
-	sa.sa_handler = taskinfo;
-	sa.sa_flags = SA_RESTART;
-	sigaction(SIGQUIT, &sa, &osa);
-
-#ifdef SIGINFO
-	sigaction(SIGINFO, &sa, &osa);
-#endif
-
-	argv0 = argv[0];
-	taskargc = argc;
-	taskargv = argv;
-
-	startfdtask(onloop, (void *)100);
-
-	taskcreate(taskmainstart, NULL, 256*1024);
-	taskscheduler();
-	fprint(2, "taskscheduler returned in main!\n");
-	abort();
-	return 0;
-}
-
-//taskcreate(taskmainstart, NULL, mainstacksize);
-//taskscheduler();
 
 /*
  * hooray for linked lists

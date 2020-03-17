@@ -15,7 +15,21 @@ typedef struct Task Task;
 typedef struct Tasklist Tasklist;
 
 int		anyready(void);
+/*use this only when you need to track and resume from your application*/
+Task* 	taskcreateraw(void (*fn)(void*), void *arg, uint stack);
+
 int		taskcreate(void (*f)(void *arg), void *arg, unsigned int stacksize);
+void 	taskscheduler(void);
+/*	
+	switch to scheduler, don't call this directly without 
+	holding a reference to the task or putting into scheduler queue
+	otherwise the context is lost forever
+
+*/
+void 	taskswitch(void);
+/*puts the task to the end of the scheduler queue*/
+void 	taskready(Task *t);
+
 void	taskexit(int);
 void	taskexitall(int);
 void	taskmain(int argc, char *argv[]);
@@ -156,9 +170,9 @@ int		chansendul(Channel *c, unsigned long v);
 */
 
 /*hooked sys functions*/
-ssize_t		read(size_t, void*, size_t);
-ssize_t		read1(size_t, void*, size_t);	/* always uses fdwait */
-ssize_t		write(size_t, void*, size_t);
+ssize_t		fdread1(size_t, void*, size_t);	/* always uses fdwait */
+inline ssize_t		fdread(size_t, void*, size_t);
+inline ssize_t		fdwrite(size_t, void*, size_t);
 
 void		fdwait(int, int);
 int			fdnoblock(int);
@@ -184,9 +198,17 @@ ssize_t		netdial(int, char*, int);
 int		netlookup(char*, uint32_t*);	/* blocks entire program! */
 
 
-enum{
-	LIBTASK_POLL_TIMEOUT = 1989
-};
+
+
+#define _8K_ 8*1024
+#define _16K_ 16*1024
+#define _32K_ 32*1024
+#define _64K_ 64*1024
+
+
+#define LIBTASK_POLL_TIMEOUT 1989
+#define LIBTASK_POLL_CLOSED = 1990
+
 
 #ifdef VERSION_DEBUG 
 	#define TASKSTATE(...) taskstate(__VA_ARGS__)

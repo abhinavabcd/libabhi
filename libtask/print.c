@@ -1,8 +1,10 @@
 /* Copyright (c) 2004 Russ Cox.  See COPYRIGHT. */
 
-#include "taskimpl.h"
+#include <unistd.h>
 #include <stdio.h>	/* for strerror! */
 
+#include "taskimpl.h"
+#include "wrap_syscalls.h"
 /*
  * Stripped down print library.  Plan 9 interface, new code.
  */
@@ -206,7 +208,7 @@ int vfprint(int fd, char *fmt, va_list arg){
 	char buf[256];
 
 	vseprint(buf, buf+sizeof buf, fmt, arg);
-	return write((size_t)fd, buf, (size_t)strlen(buf));
+	return __real_write((size_t)fd, buf, (size_t)strlen(buf));
 }
 
 int vprint(char *fmt, va_list arg){

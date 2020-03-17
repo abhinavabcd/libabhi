@@ -5,11 +5,6 @@
 #include <task.h>
 #include <stdlib.h>
 
-enum
-{
-	STACK = 32768
-};
-
 char *server;
 char *url;
 
@@ -29,7 +24,7 @@ taskmain(int argc, char **argv)
 	url = argv[3];
 
 	for(i=0; i<n; i++){
-		taskcreate(fetchtask, 0, STACK);
+		taskcreate(fetchtask, 0, _8K_);
 		while(taskyield() > 1)
 			;
 		sleep(1);
@@ -55,4 +50,19 @@ fetchtask(void *v)
 		close(fd);
 		write(1, ".", 1);
 	}
+}
+
+
+int argc = 0;
+char **argv = NULL;
+void _taskmain(){
+	taskmain(argc, argv);
+}
+
+int main(int _argc, char **_argv){
+	argc = _argc;
+	argv = _argv;
+	taskcreate(_taskmain, 0, _32K_);
+	taskscheduler();
+	return 0;
 }

@@ -48,6 +48,20 @@ taskmain(int argc, char **argv)
 		chansendul(c, i);
 }
 
+int argc = 0;
+char **argv = NULL;
+void _taskmain(void *arg){
+	taskmain(argc, argv);
+}
+
+int main(int _argc, char **_argv){
+	argc = _argc;
+	argv = _argv;
+	taskcreate(_taskmain, 0, _32K_);
+	taskscheduler();
+	return 0;
+}
+
 void*
 emalloc(unsigned long n)
 {
