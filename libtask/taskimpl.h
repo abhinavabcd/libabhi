@@ -193,6 +193,8 @@ void	taskswitch(void);
 void	addtask(Tasklist*, Task*);
 void	deltask(Tasklist*, Task*);
 
+
+
 /*running task and count*/
 extern __thread Task *taskrunning;
 extern __thread int	taskcount;

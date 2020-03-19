@@ -82,7 +82,7 @@ void fdtask(void *v){
 			deltask(&sleeping, t);
 			if(--sleepingcounted == 0)
 				taskcount--;
-			t->udata = (void *)(ETIMEDOUT); // for fd based tasks you can use this data to store flags
+			t->udata = (void *)(LIBTASK_TIMEOUT); // for fd based tasks you can use this data to store flags
 			taskready(t);
 		}
 
@@ -165,12 +165,15 @@ void fdtask(void *v){
 		else{
 			/* sleep at most 25s */
 			now = nsec();
-			if(now >= t->alarmtime)
+			if(now >= t->alarmtime){
 				ms = 0;
-			else if(now+25*1000*1000*1000LL >= t->alarmtime)
+			}
+			else if(now + 25 * 1000 * 1000 * 1000LL >= t->alarmtime){
 				ms = (t->alarmtime - now)/1000000;
-			else
+			}
+			else{
 				ms = 25 * 1000;
+			}
 		}
 
         int nevents;
@@ -195,7 +198,7 @@ void fdtask(void *v){
 			deltask(&sleeping, t);
 			if(--sleepingcounted == 0)
 				taskcount--;
-			t->udata = (void *)(ETIMEDOUT); // for fd based tasks you can use this data to store flags
+			t->udata = (void *)(LIBTASK_TIMEOUT); // for fd based tasks you can use this data to store flags
 			taskready(t);
 		}
 
@@ -276,7 +279,7 @@ void startfdtask(int (*fn)(void *), void *arg){
 /* add current task to sleeping queue and switch back to scheduler */
 size_t taskdelay(size_t ms){
 	size_t when, now;
-	Task *t;
+	Task *t = NULL;
 	
 	if(!startedfdtask){
 		startedfdtask = 1;
@@ -289,26 +292,32 @@ size_t taskdelay(size_t ms){
 
 	now = nsec();
 	when = now + ms*1000000;
-	for(t=sleeping.tail; t!=NULL && t->alarmtime >= when; t=t->prev);//iterate through tasks until you find the right place
+	for(t=sleeping.tail; t!=NULL && t->alarmtime >= when; t=t->prev){
+	}
 
 	if(t){
-		taskrunning->prev = t->prev;
-		taskrunning->next = t;
+		taskrunning->prev = t;
+		taskrunning->next = t->next;
 	}else{
-		taskrunning->prev = sleeping.tail;
-		taskrunning->next = NULL;
+		taskrunning->next = sleeping.head;
+		taskrunning->prev = NULL;
 	}
 
 	t = taskrunning;
 	t->alarmtime = when;
-	if(t->prev)
+
+	if(t->prev){
 		t->prev->next = t;
-	else
+	}
+	else{
 		sleeping.head = t;
-	if(t->next)
+	}
+	if(t->next){
 		t->next->prev = t;
-	else
+	}
+	else{
 		sleeping.tail = t;
+	}
 
 	if(sleepingcounted++ == 0){ //if we have any sleeping tasks they mark as 
 		taskcount++;
@@ -328,10 +337,10 @@ extern "C" {
 		int m;
 		
 		while((m= __real_read(fd, buf, n)) < 0 && errno == EAGAIN){
-			int _err = (int)((intptr_t) taskdata()); // if we marked any errors (like timeout, closed)
+			int _err = (int)((intptr_t) taskdata((void *)NULL)); // if we marked any errors (like timeout, closed)
 			if(_err){
 				errno = _err;
-				return -1;
+				return -1; // it's out own timeout
 			}
 
 			fdwait(fd, 'r');
@@ -348,7 +357,7 @@ extern "C" {
 			while((m= __real_write(fd, (char*)buf+tot, n-tot)) < 0 && errno == EAGAIN){
 
 				//check for custom errno that we set (mainly our own timeout)
-				int _err = (int)((intptr_t) taskdata() );
+				int _err = (int)((intptr_t) taskdata((void *)NULL) );
 				if(_err){
 					errno = _err;
 					return -1;
@@ -375,7 +384,7 @@ ssize_t read1(size_t fd, void *buf, size_t n){
 
 	do{
 		//mark any custom errno
-		int _err = (int)((intptr_t) taskdata() ); // if we marked any errors (like timeout, closed)
+		int _err = (int)((intptr_t) taskdata((void *)NULL) ); // if we marked any errors (like timeout, closed)
 		if(_err){
 			errno = _err;
 			return -1;

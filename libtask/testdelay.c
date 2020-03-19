@@ -13,7 +13,7 @@ void
 delaytask(void *v)
 {
 	taskdelay((size_t)v);
-	printf("awake after %d ms\n", (size_t)v);
+	printf("awake after %ld ms\n", (size_t)v);
 	chansendul(c, 0);
 }
 

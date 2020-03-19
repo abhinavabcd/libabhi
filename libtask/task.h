@@ -35,6 +35,8 @@ void	taskexitall(int);
 void	taskmain(int argc, char *argv[]);
 int		taskyield(void);
 void* 	taskdata(void);
+void* 	taskdata(void *data);//set
+
 void	needstack(int);
 
 #ifdef VERSION_DEBUG
@@ -206,8 +208,7 @@ int		netlookup(char*, uint32_t*);	/* blocks entire program! */
 #define _64K_ 64*1024
 
 
-#define LIBTASK_POLL_TIMEOUT 1989
-#define LIBTASK_POLL_CLOSED = 1990
+#define LIBTASK_TIMEOUT 1989
 
 
 #ifdef VERSION_DEBUG 

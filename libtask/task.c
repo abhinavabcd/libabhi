@@ -97,6 +97,7 @@ static Task* taskalloc(void (*fn)(void*), void *arg, uint stack){
 	t->id = ++taskidgen;
 	t->startfn = fn;
 	t->startarg = arg;
+	t->udata = (void *)NULL;
 
 	/* do a reasonable initialization */
 	memset(&t->context.uc, 0, sizeof t->context.uc);
@@ -220,7 +221,7 @@ void taskscheduler(void){
 		t->_state = 0;
 		taskrunning = t;
 		_tasknswitch++;
-		TASKDEBUG("run %d, %d (%s)\n",syscall(__NR_gettid), t->id, t->name);
+		//TASKDEBUG("run %d, %d (%s)\n",syscall(__NR_gettid), t->id, t->name);
 		//switch to that task on queue
 		contextswitch(&taskschedcontext, &t->context);
 		//print("back in scheduler\n");
@@ -241,6 +242,16 @@ void taskscheduler(void){
 
 void* taskdata(void){
 	return taskrunning ? taskrunning->udata : NULL;
+}
+
+/*returns the old one and set the new one */
+void* taskdata(void *data){
+	if(taskrunning){
+		void *ret = taskrunning->udata;
+		taskrunning->udata = data;
+		return ret;
+	}
+	return NULL;
 }
 
 
@@ -314,6 +325,8 @@ static void taskinfo(int s){
 
 /*
  * hooray for linked lists
+ *   Prev<- ->Next
+ *	 Head  - Tail
  */
 void addtask(Tasklist *l, Task *t){
 	if(l->tail){
@@ -328,14 +341,18 @@ void addtask(Tasklist *l, Task *t){
 }
 
 void deltask(Tasklist *l, Task *t){
-	if(t->prev)
+	if(t->prev){
 		t->prev->next = t->next;
-	else
+	}
+	else{
 		l->head = t->next;
-	if(t->next)
+	}
+	if(t->next){
 		t->next->prev = t->prev;
-	else
+	}
+	else{
 		l->tail = t->prev;
+	}
 }
 
 size_t taskid(void) {

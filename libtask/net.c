@@ -5,6 +5,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/poll.h>
+#include "wrap_syscalls.h"
 
 int netannounce(int istcp, char *server, int port) {
 	int fd, n, proto;
@@ -139,6 +140,43 @@ int netlookup(char *name, uint32_t *ip){
 	return -1;
 }
 
+
+extern "C"{
+	int __wrap_connect(int fd, struct sockaddr *addr,
+	                   socklen_t addrlen){
+
+		fdnoblock(fd);//set non blocking
+
+		if(__real_connect(fd, addr, addrlen) < 0 && errno != EINPROGRESS){
+			TASKSTATE("connect failed");
+			return -1;
+		}
+		//sleep and wakeup after there is data
+		fdwait(fd, 'w');
+
+		//check for our timeout
+		int _err = (int)((intptr_t) taskdata()); // check for timeout
+		if(_err){
+			errno = _err;
+			return -1; // could not connect within our time
+		}
+
+		//check for remote connection succeded or not
+		if(getpeername(fd, addr, &addrlen) >= 0){
+			TASKSTATE("connect succeeded");
+			return 0;
+		}	
+		//error scenario
+		int n;
+		getsockopt(fd, SOL_SOCKET, SO_ERROR, (struct sockaddr*)&n, &addrlen);
+		if(n == 0){//no error ? 
+			n = ECONNREFUSED;
+		}
+		errno = n;
+		return -1;
+	}
+}
+
 ssize_t netdial(int istcp, char *server, int port){
 	int proto, fd, n;
 	uint32_t ip;
@@ -167,28 +205,13 @@ ssize_t netdial(int istcp, char *server, int port){
 	memmove(&sa.sin_addr, &ip, 4);
 	sa.sin_family = AF_INET;
 	sa.sin_port = htons(port);
-	if(connect(fd, (struct sockaddr*)&sa, sizeof sa) < 0 && errno != EINPROGRESS){
-		TASKSTATE("connect failed");
+
+	int ret = __wrap_connect(fd,  (struct sockaddr*)&sa, sizeof sa);
+	if(ret < 0 ){
 		close(fd);
 		return -1;
 	}
 
-	/* wait for finish */	
-	fdwait(fd, 'w');
-	sn = sizeof sa;
-	if(getpeername(fd, (struct sockaddr*)&sa, &sn) >= 0){
-		TASKSTATE("connect succeeded");
-		return fd;
-	}
-	
-	/* report error */
-	sn = sizeof n;
-	getsockopt(fd, SOL_SOCKET, SO_ERROR, (void*)&n, &sn);
-	if(n == 0)
-		n = ECONNREFUSED;
-	close(fd);
-	TASKSTATE("connect failed");
-	errno = n;
-	return -1;
+	return fd;
 }
 

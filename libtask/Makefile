@@ -44,7 +44,7 @@ LIBS=
 	$(CC) -c $(CFLAGS) $*.c -o $@
 
 
-WRAP_SYS_CALLS=-Wl,-wrap=write -Wl,-wrap=read
+WRAP_SYS_CALLS=-Wl,-wrap=write -Wl,-wrap=read -Wl,-wrap=connect
 
 $(LIB): $(OFILES)
 	ar rvc -o $(LIB) $(OFILES)
