@@ -157,12 +157,15 @@ int taskcreate(void (*fn)(void*), void *arg, uint stack){
 	taskready(t);
 	return t->id;
 }
-/*switch to scheduler, don't call this directly without putting to queue, otherwise the context is lost forever*/
+/*switch to scheduler, don't call this directly without putting to queue 
+or saving the task somwhere, 
+otherwise the context is lost forever*/
 void taskswitch(void){
 	needstack(0);
 	contextswitch(&taskrunning->context, &taskschedcontext);
 }
 
+/*puts the state at the end of run queue*/
 void taskready(Task *t){
 	if(t->_state == TASK_STATE_READY){
 		return;// already in queue so ignore
@@ -180,9 +183,11 @@ int taskyield(void){
 	taskready(taskrunning);
 	TASKSTATE("yield");
 	taskswitch();
+	/*even with the overflow this works just fine! very neat*/
 	return _tasknswitch - n - 1;
 }
 
+/*check if we have any tasks that can be run*/
 int anyready(void){
 	return taskrunqueue.head != NULL;
 }
@@ -357,4 +362,8 @@ void deltask(Tasklist *l, Task *t){
 
 size_t taskid(void) {
 	return taskrunning->id;
+}
+
+Task *taskthis(){
+	return taskrunning;
 }

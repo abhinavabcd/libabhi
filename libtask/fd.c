@@ -14,17 +14,25 @@ __thread Tasklist sleeping = {0};
 __thread int sleepingcounted = 0;
 
 /*internal variable indicating whether we have started the fd task*/
-__thread int startedfdtask;
+__thread int startedfdtask = 0;
 
 /* forward delcaring nano seconds*/
 inline size_t nsec(void);
 
 /* used with loop function */
+__thread int (*_pool_loop_fn)(void*);
 __thread void *_pool_loop_arg;
 
 
 
-/*switch to poll implementation if not linux*/
+/*forward delcaration*/
+void _startfdtask();
+
+
+
+/*
+	non-linux poll implementation
+*/
 #ifndef __linux__
 #include <sys/poll.h>
 
@@ -49,16 +57,16 @@ void fdtask(void *v){
 		errno = 0;
 		TASKSTATE("poll");
 		if((t=sleeping.head) == NULL)
-			ms = 1000; // just wait for 1 sec
+			ms = 0; // no waiting taks continue
 		else{
 			/* sleep at most 5s */
 			now = nsec();
 			if(now >= t->alarmtime)
 				ms = 0;
-			else if(now+5*1000*1000*1000LL >= t->alarmtime)
+			else if(now+1*1000*1000*1000LL >= t->alarmtime)
 				ms = (t->alarmtime - now)/1000000;
 			else
-				ms = 5000;
+				ms = 1000;
 		}
 		if(poll(pollfd, npollfd, ms) < 0){
 			if(errno == EINTR)
@@ -98,16 +106,15 @@ void fdtask(void *v){
 
 			break; // end this task
 		}
-
 	}
+	startedfdtask = 0;
 }
 
 void fdwait(int fd, int rw){
 	int bits;
 
 	if(!startedfdtask){
-		startedfdtask = 1;
-		taskcreate(fdtask, 0, _32K_);
+		_startfdtask();
 	}
 
 	if(npollfd >= MAXFD){
@@ -137,7 +144,11 @@ void fdwait(int fd, int rw){
 
 #else 
 
-/* Linux - switch to epoll */
+/*
+ Linux - switch to epoll
+*/
+
+
 #include <sys/epoll.h>
 
 __thread static int epfd;
@@ -160,19 +171,22 @@ void fdtask(void *v){
 		errno = 0;
 		TASKSTATE("epoll");
 		if((t= sleeping.head) == NULL){
-			ms = 1000; // just wait for 1 sec
+			ms = 0; // no waiting taks continue
 		}
 		else{
-			/* sleep at most 25s */
+			/* sleep at most 2s */
 			now = nsec();
 			if(now >= t->alarmtime){
 				ms = 0;
 			}
-			else if(now + 25 * 1000 * 1000 * 1000LL >= t->alarmtime){
-				ms = (t->alarmtime - now)/1000000;
-			}
 			else{
-				ms = 25 * 1000;
+				size_t to_wait =  t->alarmtime - now;
+				if(to_wait > 500 * 1000 * 1000LL){
+					ms = 500;
+				}
+				else{
+					ms = to_wait/1000000;
+				}
 			}
 		}
 
@@ -203,7 +217,7 @@ void fdtask(void *v){
 		}
 
 		//destroy and cleanup
-		if(v && ((int (*)(void *))v)(_pool_loop_arg) ==-1  ){ //function pointer
+		if(v && ((int (*)(void *))v)(_pool_loop_arg) == -1  ){ //function pointer
 			//wake up all sleeping tasks and mark them timeout?
 			while( (t= sleeping.head) !=NULL ){
 				deltask(&sleeping, t);
@@ -212,8 +226,7 @@ void fdtask(void *v){
 				t->udata = (void *)(EIO); // for fd based tasks you can use this data to store flags
 				taskready(t);
 			}
-
-			break; // end this task
+			break;
 		}
 	}
 	startedfdtask = 0;
@@ -226,10 +239,7 @@ void fdtask(void *v){
 void fdwait(int fd, int rw){
 
 	if(!startedfdtask){
-		startedfdtask = 1;
-        epfd = epoll_create(1);
-        assert(epfd >= 0);
-		taskcreate(fdtask, 0, _32K_);
+		_startfdtask();
 	}
 
 	TASKSTATE("fdwait for %s", rw=='r' ? "read" : rw=='w' ? "write" : "error");
@@ -262,19 +272,6 @@ void fdwait(int fd, int rw){
 #endif 
 
 
-/* You can start this function that execute the callback on every loop */
-void startfdtask(int (*fn)(void *), void *arg){
-
-	_pool_loop_arg = arg;
-	if(!startedfdtask){
-		startedfdtask = 1;
-#ifdef __linux__
-        epfd = epoll_create(1);
-        assert(epfd >= 0);
-#endif
-		taskcreate(fdtask, (void *)fn, _32K_);
-	}	
-}
 
 /* add current task to sleeping queue and switch back to scheduler */
 size_t taskdelay(size_t ms){
@@ -282,12 +279,7 @@ size_t taskdelay(size_t ms){
 	Task *t = NULL;
 	
 	if(!startedfdtask){
-		startedfdtask = 1;
-#ifdef __linux__
-        epfd = epoll_create(1);
-        assert(epfd >= 0);
-#endif
-		taskcreate(fdtask, 0, _32K_);
+		_startfdtask();
 	}
 
 	now = nsec();
@@ -299,6 +291,7 @@ size_t taskdelay(size_t ms){
 		taskrunning->prev = t;
 		taskrunning->next = t->next;
 	}else{
+		/*putting it in the front most, near head*/
 		taskrunning->next = sleeping.head;
 		taskrunning->prev = NULL;
 	}
@@ -319,7 +312,8 @@ size_t taskdelay(size_t ms){
 		sleeping.tail = t;
 	}
 
-	if(sleepingcounted++ == 0){ //if we have any sleeping tasks they mark as 
+	//if we have any sleeping tasks then this task is virtually alive
+	if(sleepingcounted++ == 0){ 
 		taskcount++;
 	}
 	taskswitch(); 
@@ -328,22 +322,51 @@ size_t taskdelay(size_t ms){
 }
 
 
+/*starts the fd task if not started already*/
+inline void _startfdtask(){
+	if(!startedfdtask){
+		startedfdtask = 1;
+		#ifdef __linux__
+	        epfd = epoll_create(1);
+	        assert(epfd >= 0);
+		#endif
+		taskcreate(fdtask, (void*)(_pool_loop_fn), _32K_);
+	}
+}
+
+/* You can start this function that execute the callback on every loop */
+void startfdtask(int (*fn)(void *), void *arg){
+
+	/*
+		save them as thread local functions called after every pool loop
+		if loop_fn returns -1, then we should exit
+	*/
+	_pool_loop_arg = arg;
+	_pool_loop_fn = fn;
+	_startfdtask();
+}
+
+
+
 extern "C" {
 	/* Wrap system calls */
 
 	ssize_t __wrap_read(size_t fd, void *buf, size_t n){
 
+		TASKDEBUG("wrap read\n");
 
+		taskdata((void *)NULL);
 		int m;
-		
-		while((m= __real_read(fd, buf, n)) < 0 && errno == EAGAIN){
+		while((m= __real_read(fd, buf, n)) < 0 && ( errno == EAGAIN || errno == EWOULDBLOCK )){
+
+			fdwait(fd, 'r');
+
+			/*check for our custom timeout*/
 			int _err = (int)((intptr_t) taskdata((void *)NULL)); // if we marked any errors (like timeout, closed)
 			if(_err){
 				errno = _err;
-				return -1; // it's out own timeout
+				return -1;
 			}
-
-			fdwait(fd, 'r');
 		}
 
 		return m;
@@ -351,27 +374,55 @@ extern "C" {
 
 	ssize_t __wrap_write(size_t fd, void *buf, size_t n){
 
-		int m, tot;
-		
-		for(tot=0; tot<n; tot+=m){
-			while((m= __real_write(fd, (char*)buf+tot, n-tot)) < 0 && errno == EAGAIN){
+		TASKDEBUG("wrap write\n");
 
-				//check for custom errno that we set (mainly our own timeout)
-				int _err = (int)((intptr_t) taskdata((void *)NULL) );
-				if(_err){
-					errno = _err;
-					return -1;
-				}
+		taskdata((void *)NULL);
+		int m, tot;
+		for(tot=0; tot<n; tot+=m){
+			while((m= __real_write(fd, (char*)buf+tot, n-tot)) < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)){
 
 				fdwait(fd, 'w');
+
+				/* check for our custom timeout */
+				int _err = (int)((intptr_t) taskdata((void *)NULL)); // if we marked any errors (like timeout, closed)
+				if(_err){
+					errno = _err;
+					return tot > 0 ? tot : -1;
+				}
 			}
-			if(m < 0)
+			if(m < 0){
 				return m;
-			if(m == 0)
+			}
+			if(m == 0){
 				break;
+			}
 		}
 
 		return tot;
+	}
+
+	ssize_t __wrap_recv( int socket, void *buffer, size_t length, int flags ){
+		TASKDEBUG("unimplemented recv\n");
+		return __real_recv(socket, buffer, length, flags);
+	}
+
+	ssize_t __wrap_send(int socket, void *buffer, size_t length, int flags){
+		TASKDEBUG("unimplemented send\n");
+		return __real_recv(socket, buffer, length, flags);
+	}
+
+	ssize_t __wrap_recvfrom(int socket, void *buffer, size_t length,
+		                 int flags, struct sockaddr *address,
+						               socklen_t *address_len){
+		TASKDEBUG("unimplemented recvfrom\n");
+		return __wrap_recvfrom(socket, buffer, length, flags, address, address_len);
+	}
+
+	ssize_t __wrap_sendto(int socket, void *message, size_t length,
+		                 int flags, struct sockaddr *dest_addr,
+						               socklen_t dest_len){
+		TASKDEBUG("unimplemented sendto\n");
+		return __real_sendto(socket, message, length, flags, dest_addr, dest_len);
 	}
 
 }

@@ -28,8 +28,8 @@ AS=g++ -c
 CC=g++
 
 CFLAGS= -g -Wall -fPIC -pipe -fno-inline \
-		-O2 -D_GNU_SOURCE -D_REENTRANT -DVERSION_DEBUG \
-		-I. 
+		-O2 -D_GNU_SOURCE -D_REENTRANT \
+		-I. #-DVERSION_DEBUG \
 
 
 
@@ -44,7 +44,8 @@ LIBS=
 	$(CC) -c $(CFLAGS) $*.c -o $@
 
 
-WRAP_SYS_CALLS=-Wl,-wrap=write -Wl,-wrap=read -Wl,-wrap=connect
+WRAP_SYS_CALLS=-Wl,-wrap=write -Wl,-wrap=read -Wl,-wrap=connect -Wl,-wrap=recv \
+		-Wl,-wrap=send -Wl,-wrap=recvfrom -Wl,-wrap=sendto
 
 $(LIB): $(OFILES)
 	ar rvc -o $(LIB) $(OFILES)

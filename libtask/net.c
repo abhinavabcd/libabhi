@@ -145,6 +145,9 @@ extern "C"{
 	int __wrap_connect(int fd, struct sockaddr *addr,
 	                   socklen_t addrlen){
 
+		TASKDEBUG("wrap connect\n");
+
+		taskdata((void *)NULL);
 		fdnoblock(fd);//set non blocking
 
 		if(__real_connect(fd, addr, addrlen) < 0 && errno != EINPROGRESS){
@@ -175,6 +178,7 @@ extern "C"{
 		errno = n;
 		return -1;
 	}
+
 }
 
 ssize_t netdial(int istcp, char *server, int port){

@@ -15,6 +15,8 @@ typedef struct Task Task;
 typedef struct Tasklist Tasklist;
 
 int		anyready(void);
+
+
 /*use this only when you need to track and resume from your application*/
 Task* 	taskcreateraw(void (*fn)(void*), void *arg, uint stack);
 
@@ -35,9 +37,17 @@ void	taskexitall(int);
 void	taskmain(int argc, char *argv[]);
 int		taskyield(void);
 void* 	taskdata(void);
-void* 	taskdata(void *data);//set
+
+/* replace and get existing */
+void* 	taskdata(void *data);
 
 void	needstack(int);
+
+
+/*
+	don't use this for normal usage , just returns running task
+*/
+Task *taskthis();
 
 #ifdef VERSION_DEBUG
 void		taskname(char*, ...);
@@ -173,8 +183,8 @@ int		chansendul(Channel *c, unsigned long v);
 
 /*hooked sys functions*/
 ssize_t		fdread1(size_t, void*, size_t);	/* always uses fdwait */
-inline ssize_t		fdread(size_t, void*, size_t);
-inline ssize_t		fdwrite(size_t, void*, size_t);
+ssize_t		fdread(size_t, void*, size_t);
+ssize_t		fdwrite(size_t, void*, size_t);
 
 void		fdwait(int, int);
 int			fdnoblock(int);
