@@ -27,7 +27,7 @@ $(OFILES): taskimpl.h task.h 386-ucontext.h power-ucontext.h
 AS=g++ -c
 CC=g++
 
-CFLAGS= -g -Wall -fPIC -pipe -fno-inline \
+CFLAGS= -Wall -fPIC -pipe -fno-inline \
 		-O2 -D_GNU_SOURCE -D_REENTRANT \
 		-I. #-DVERSION_DEBUG \
 

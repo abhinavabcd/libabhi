@@ -140,8 +140,8 @@ Task* taskcreateraw(void (*fn)(void*), void *arg, uint stack){
 	Task *t;
 	t = taskalloc(fn, arg, stack);
 	taskcount++;
-	if(nalltask%64 == 0){
-		alltask = (Task **)realloc(alltask, (nalltask+64)*sizeof(alltask[0]));
+	if(nalltask%1024 == 0){
+		alltask = (Task **)realloc(alltask, (nalltask+1024)*sizeof(alltask[0]));
 		if(alltask == NULL){
 			fprint(2, "out of memory\n");
 			abort();
@@ -243,6 +243,7 @@ void taskscheduler(void){
 	while(nalltask > 0){
 		free(alltask[--nalltask]);
 	}
+	free(alltask);	
 }
 
 void* taskdata(void){

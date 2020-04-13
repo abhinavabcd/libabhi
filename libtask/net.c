@@ -75,6 +75,21 @@ int netaccept(int fd, char *server, int *port){
 	int _temp = 1;
 	setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, (char*)&_temp, sizeof(int));
 	TASKSTATE("netaccept succeeded");
+
+	/*
+		it specifies the maximum amount of
+		time in milliseconds that transmitted data may remain
+		unacknowledged before TCP will forcibly close the
+		corresponding connection and return ETIMEDOUT to the
+		application when read/write. 
+		Essentially we give tcp 29secs to send and acknowledge otherwise raise an error
+	*/
+	unsigned int tcp_max_user_timeout  = 29 * 1000;
+    if (setsockopt (cfd, SOL_TCP, TCP_USER_TIMEOUT, (char *)&tcp_max_user_timeout,
+                sizeof(tcp_max_user_timeout)) < 0){
+    	/*TODO: log we couldn't set TCP_USER_TIMEOUT*/
+    }
+
 	return cfd;
 }
 

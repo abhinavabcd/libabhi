@@ -63,10 +63,10 @@ void fdtask(void *v){
 			now = nsec();
 			if(now >= t->alarmtime)
 				ms = 0;
-			else if(now+1*1000*1000*1000LL >= t->alarmtime)
+			else if(now+ 100*1000*1000LL >= t->alarmtime)
 				ms = (t->alarmtime - now)/1000000;
 			else
-				ms = 1000;
+				ms = 100;
 		}
 		if(poll(pollfd, npollfd, ms) < 0){
 			if(errno == EINTR)
@@ -139,7 +139,7 @@ void fdwait(int fd, int rw){
 	pollfd[npollfd].revents = 0;
 	npollfd++;
 
-    taskdelay(25000); // add this task a sleeping queue
+    taskdelay(30000); // add this task a sleeping queue
 }
 
 #else 
@@ -181,8 +181,8 @@ void fdtask(void *v){
 			}
 			else{
 				size_t to_wait =  t->alarmtime - now;
-				if(to_wait > 500 * 1000 * 1000LL){
-					ms = 500;
+				if(to_wait > 20 * 1000 * 1000LL){
+					ms = 20;
 				}
 				else{
 					ms = to_wait/1000000;
@@ -263,7 +263,7 @@ void fdwait(int fd, int rw){
         assert(r == 0);
     }
 
-    taskdelay(25000); // taskswitch();// add to epoll and goes to scheduler(Note: we are not even on the scheduler queue, let epoll take care of it)
+    taskdelay(30000); // taskswitch();// add to epoll and goes to scheduler(Note: we are not even on the scheduler queue, let epoll take care of it)
     epoll_ctl(epfd, EPOLL_CTL_DEL, fd, &ev);
     if (duped)
         close(fd);
