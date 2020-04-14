@@ -44,7 +44,7 @@ LIBS=
 	$(CC) -c $(CFLAGS) $*.c -o $@
 
 
-WRAP_SYS_CALLS=-Wl,-wrap=write -Wl,-wrap=read -Wl,-wrap=connect -Wl,-wrap=recv \
+WRAP_SYS_CALLS=-Wl,-wrap=write -Wl,-wrap=read -Wl,-wrap=connect -Wl,-wrap=accept -Wl,-wrap=recv \
 		-Wl,-wrap=send -Wl,-wrap=recvfrom -Wl,-wrap=sendto
 
 $(LIB): $(OFILES)

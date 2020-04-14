@@ -10,6 +10,7 @@ extern "C"{
 	ssize_t __real_write(int fildes, const void *buf, size_t nbyte);
 
 	int __real_connect(int sockfd, struct sockaddr *addr, socklen_t addrlen);	
+	int __real_accept(int sockfd, struct sockaddr *clientaddr, socklen_t *addrlen);
 	
 	ssize_t __real_recv( int socket, void *buffer, size_t length, int flags );
 

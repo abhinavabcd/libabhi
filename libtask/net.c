@@ -5,6 +5,8 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/poll.h>
+#include <arpa/inet.h>
+
 #include "wrap_syscalls.h"
 
 int netannounce(int istcp, char *server, int port) {
@@ -50,28 +52,37 @@ int netannounce(int istcp, char *server, int port) {
 	return fd;
 }
 
-int netaccept(int fd, char *server, int *port){
+/*	
+	ipv6 accept
+	remote_address should be a buffer of atleast size
+	INET6_ADDRSTRLEN = 46 bytes
+*/
+int netaccept(int fd, char *remote_address, int *remote_port){
+	/*client file descriptor*/
 	int cfd;
-	struct sockaddr_in sa;
-	uchar *ip;
-	socklen_t len;
+   	struct sockaddr_in6 clientaddr;
+   	int addrlen=sizeof(clientaddr);
 	
 	fdwait(fd, 'r');
 
 	TASKSTATE("netaccept");
-	len = sizeof sa;
-	if((cfd = accept(fd, (sockaddr*)&sa, &len)) < 0){
+	if((cfd = __real_accept(fd, (struct sockaddr *)&clientaddr, (socklen_t*)&addrlen)) < 0){
 		TASKSTATE("accept failed");
 		return -1;
 	}
-	if(server){
-		ip = (uchar*)&sa.sin_addr;
-		memcpy(server, ip, 4);//copy those 4 bytes, ipv4
-	}
-	if(port)
-		*port = ntohs(sa.sin_port);
 	/*set it non blocking!*/
 	fdnoblock(cfd);
+
+	if(remote_address){
+		inet_ntop(AF_INET6, &clientaddr.sin6_addr, remote_address, INET6_ADDRSTRLEN);
+	}
+	if(remote_port){
+		*remote_port = ntohs(clientaddr.sin6_port);
+	}
+
+	/*
+		set socket to send immediately instead of buffering
+	*/
 	int _temp = 1;
 	setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, (char*)&_temp, sizeof(int));
 	TASKSTATE("netaccept succeeded");
@@ -157,6 +168,20 @@ int netlookup(char *name, uint32_t *ip){
 
 
 extern "C"{
+
+	int __wrap_accept(int sockfd, struct sockaddr *clientaddr, socklen_t *addrlen){
+		/*wait until data*/
+		fdwait(sockfd, 'r');
+		int cfd;
+		if((cfd = __real_accept(sockfd, clientaddr, addrlen) < 0)){
+			TASKSTATE("accept failed");
+			return -1;
+		}
+		/*set it non blocking!*/
+		fdnoblock(cfd);
+
+		return cfd;
+	}
 	int __wrap_connect(int fd, struct sockaddr *addr,
 	                   socklen_t addrlen){
 
