@@ -9,6 +9,12 @@
 
 #include "wrap_syscalls.h"
 
+
+int __wrap_connect(int fd, struct sockaddr *addr, socklen_t addrlen);
+int __wrap_accept(int sockfd, struct sockaddr *clientaddr, socklen_t *addrlen);
+
+
+
 int netannounce(int istcp, char *server, int port) {
 	int fd, n, proto;
 	struct sockaddr_in sa;
@@ -53,26 +59,20 @@ int netannounce(int istcp, char *server, int port) {
 }
 
 /*	
-	ipv6 accept
+	ipv6 accept sockets on listening socket fd
 	remote_address should be a buffer of atleast size
 	INET6_ADDRSTRLEN = 46 bytes
 */
-int netaccept(int fd, char *remote_address, int *remote_port){
+int netaccept6(int fd, char *remote_address, int *remote_port){
 	/*client file descriptor*/
-	int cfd;
    	struct sockaddr_in6 clientaddr;
    	int addrlen=sizeof(clientaddr);
-	
-	fdwait(fd, 'r');
+	int cfd;
+   	if((cfd= __wrap_accept(fd, (struct sockaddr *)&clientaddr, (socklen_t*)&addrlen)) < 0 ){
+   		return -1;
+   	}
 
-	TASKSTATE("netaccept");
-	if((cfd = __real_accept(fd, (struct sockaddr *)&clientaddr, (socklen_t*)&addrlen)) < 0){
-		TASKSTATE("accept failed");
-		return -1;
-	}
-	/*set it non blocking!*/
-	fdnoblock(cfd);
-
+	/*check and copy remote address and port*/
 	if(remote_address){
 		inet_ntop(AF_INET6, &clientaddr.sin6_addr, remote_address, INET6_ADDRSTRLEN);
 	}
@@ -80,28 +80,7 @@ int netaccept(int fd, char *remote_address, int *remote_port){
 		*remote_port = ntohs(clientaddr.sin6_port);
 	}
 
-	/*
-		set socket to send immediately instead of buffering
-	*/
-	int _temp = 1;
-	setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, (char*)&_temp, sizeof(int));
-	TASKSTATE("netaccept succeeded");
-
-	/*
-		it specifies the maximum amount of
-		time in milliseconds that transmitted data may remain
-		unacknowledged before TCP will forcibly close the
-		corresponding connection and return ETIMEDOUT to the
-		application when read/write. 
-		Essentially we give tcp 29secs to send and acknowledge otherwise raise an error
-	*/
-	unsigned int tcp_max_user_timeout  = 29 * 1000;
-    if (setsockopt (cfd, SOL_TCP, TCP_USER_TIMEOUT, (char *)&tcp_max_user_timeout,
-                sizeof(tcp_max_user_timeout)) < 0){
-    	/*TODO: log we couldn't set TCP_USER_TIMEOUT*/
-    }
-
-	return cfd;
+   	return cfd;
 }
 
 #define CLASS(p) ((*(unsigned char*)(p))>>6)
@@ -164,61 +143,6 @@ int netlookup(char *name, uint32_t *ip){
 	
 	TASKSTATE("netlookup failed");
 	return -1;
-}
-
-
-extern "C"{
-
-	int __wrap_accept(int sockfd, struct sockaddr *clientaddr, socklen_t *addrlen){
-		/*wait until data*/
-		fdwait(sockfd, 'r');
-		int cfd;
-		if((cfd = __real_accept(sockfd, clientaddr, addrlen) < 0)){
-			TASKSTATE("accept failed");
-			return -1;
-		}
-		/*set it non blocking!*/
-		fdnoblock(cfd);
-
-		return cfd;
-	}
-	int __wrap_connect(int fd, struct sockaddr *addr,
-	                   socklen_t addrlen){
-
-		TASKDEBUG("wrap connect\n");
-
-		taskdata((void *)NULL);
-		fdnoblock(fd);//set non blocking
-
-		if(__real_connect(fd, addr, addrlen) < 0 && errno != EINPROGRESS){
-			TASKSTATE("connect failed");
-			return -1;
-		}
-		//sleep and wakeup after there is data
-		fdwait(fd, 'w');
-
-		//check for our timeout
-		int _err = (int)((intptr_t) taskdata()); // check for timeout
-		if(_err){
-			errno = _err;
-			return -1; // could not connect within our time
-		}
-
-		//check for remote connection succeded or not
-		if(getpeername(fd, addr, &addrlen) >= 0){
-			TASKSTATE("connect succeeded");
-			return 0;
-		}	
-		//error scenario
-		int n;
-		getsockopt(fd, SOL_SOCKET, SO_ERROR, (struct sockaddr*)&n, &addrlen);
-		if(n == 0){//no error ? 
-			n = ECONNREFUSED;
-		}
-		errno = n;
-		return -1;
-	}
-
 }
 
 ssize_t netdial(int istcp, char *server, int port){

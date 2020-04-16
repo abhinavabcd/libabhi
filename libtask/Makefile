@@ -17,7 +17,7 @@ OFILES=\
 
 
 
-all: $(LIB) $(LIB_O) primes tcpproxy testdelay
+all: $(LIB) $(LIB_O) primes testdelay
 
 lib: $(LIB_O)
 
@@ -61,9 +61,6 @@ $(LIB_O): $(OFILES)
 primes: primes.o $(LIB)
 	$(CC) $(WRAP_SYS_CALLS) -o primes primes.o $(LIB) $(LIBS)
 
-tcpproxy: tcpproxy.o $(LIB)
-	$(CC) $(WRAP_SYS_CALLS)  -o tcpproxy tcpproxy.o $(LIB) $(TCPLIBS) $(LIBS)
-
 httpload: httpload.o $(LIB)
 	$(CC) $(WRAP_SYS_CALLS)  -o httpload httpload.o $(LIB) $(LIBS)
 
@@ -74,7 +71,7 @@ testdelay1: testdelay1.o $(LIB)
 	$(CC) $(WRAP_SYS_CALLS)  -o testdelay1 testdelay1.o $(LIB) $(LIBS)
 
 clean:
-	rm -f *.o primes tcpproxy testdelay testdelay1 httpload $(LIB) $(LIB_O)
+	rm -f *.o primes testdelay testdelay1 httpload $(LIB) $(LIB_O)
 
 install: $(LIB)
 	cp $(LIB) /usr/local/lib

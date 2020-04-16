@@ -205,7 +205,7 @@ enum
 };
 
 int		netannounce(int, char*, int);
-int		netaccept(int, char*, int*);
+int		netaccept6(int, char*, int*);
 ssize_t		netdial(int, char*, int);
 int		netlookup(char*, uint32_t*);	/* blocks entire program! */
 

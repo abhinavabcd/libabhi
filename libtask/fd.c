@@ -1,4 +1,12 @@
+#include <stdio.h>
 #include <fcntl.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/poll.h>
+#include <arpa/inet.h>
 
 #include "taskimpl.h"
 #include "wrap_syscalls.h"
@@ -401,27 +409,108 @@ extern "C" {
 		return tot;
 	}
 
+	/*
+		wraps accept function, set nonblocking + nodelay + user_timeout on the returning socket
+	*/
+	int __wrap_accept(int sockfd, struct sockaddr *clientaddr, socklen_t *addrlen){
+		/*wait until data*/
+		fdwait(sockfd, 'r');
+		int cfd;
+		if((cfd= __real_accept(sockfd, clientaddr, addrlen)) < 0){
+			TASKSTATE("accept failed");
+			return -1;
+		}
+		/*set it non blocking!*/
+		fdnoblock(cfd);
+
+		/*
+			set socket to send immediately instead of buffering
+		*/
+		int _temp = 1;
+		setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, (char*)&_temp, sizeof(int));
+
+		/*
+			it specifies the maximum amount of
+			time in milliseconds that transmitted data may remain
+			unacknowledged before TCP will forcibly close the
+			corresponding connection and return ETIMEDOUT to the
+			application when read/write. 
+			Essentially we give tcp 29secs to send and acknowledge otherwise raise an error
+		*/
+		unsigned int tcp_max_user_timeout  = 29 * 1000;
+	    if (setsockopt (cfd, SOL_TCP, TCP_USER_TIMEOUT, (char *)&tcp_max_user_timeout,
+	                sizeof(tcp_max_user_timeout)) < 0){
+	    	/*TODO: log we couldn't set TCP_USER_TIMEOUT*/
+	    }
+
+		return cfd;
+	}
+	
+	/*
+		wraps connection function
+	*/
+	int __wrap_connect(int fd, struct sockaddr *addr,
+	                   socklen_t addrlen){
+
+		TASKDEBUG("wrap connect\n");
+
+		taskdata((void *)NULL);
+		fdnoblock(fd);//set non blocking
+
+		if(__real_connect(fd, addr, addrlen) < 0 && errno != EINPROGRESS){
+			TASKSTATE("connect failed");
+			return -1;
+		}
+		//sleep and wakeup after there is data
+		fdwait(fd, 'w');
+
+		//check for our timeout
+		int _err = (int)((intptr_t) taskdata()); // check for timeout
+		if(_err){
+			errno = _err;
+			return -1; // could not connect within our time
+		}
+
+		//check for remote connection info again
+		if(getpeername(fd, addr, &addrlen) >= 0){
+			TASKSTATE("connect succeeded");
+			return 0;
+		}	
+		//error scenario
+		int n;
+		getsockopt(fd, SOL_SOCKET, SO_ERROR, (struct sockaddr*)&n, &addrlen);
+		if(n == 0){//no error ? 
+			n = ECONNREFUSED;
+		}
+		errno = n;
+		return -1;
+	}
+
+
+
+
+
 	ssize_t __wrap_recv( int socket, void *buffer, size_t length, int flags ){
-		TASKDEBUG("unimplemented recv\n");
+		printf("unimplemented recv dont use yet!\n");
 		return __real_recv(socket, buffer, length, flags);
 	}
 
 	ssize_t __wrap_send(int socket, void *buffer, size_t length, int flags){
-		TASKDEBUG("unimplemented send\n");
+		printf("unimplemented recv dont use yet!\n");
 		return __real_recv(socket, buffer, length, flags);
 	}
 
 	ssize_t __wrap_recvfrom(int socket, void *buffer, size_t length,
 		                 int flags, struct sockaddr *address,
 						               socklen_t *address_len){
-		TASKDEBUG("unimplemented recvfrom\n");
+		printf("unimplemented recv dont use yet!\n");
 		return __wrap_recvfrom(socket, buffer, length, flags, address, address_len);
 	}
 
 	ssize_t __wrap_sendto(int socket, void *message, size_t length,
 		                 int flags, struct sockaddr *dest_addr,
 						               socklen_t dest_len){
-		TASKDEBUG("unimplemented sendto\n");
+		printf("unimplemented recv dont use yet!\n");
 		return __real_sendto(socket, message, length, flags, dest_addr, dest_len);
 	}
 
@@ -457,7 +546,12 @@ inline ssize_t	fdwrite(size_t fd, void *buf, size_t n){
 }
 
 int fdnoblock(int fd){
-	return fcntl(fd, F_SETFL, fcntl(fd, F_GETFL)|O_NONBLOCK);
+    int iFlags;
+    iFlags = fcntl(fd, F_GETFL, 0);
+    iFlags |= O_NONBLOCK;
+    iFlags |= O_NDELAY;
+    int ret = fcntl(fd, F_SETFL, iFlags);
+    return ret;
 }
 
 inline size_t nsec(void){

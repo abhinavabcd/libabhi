@@ -126,18 +126,18 @@ int netannounce(int proto, char *address, int port)
 	Examples: netannounce(TCP, "localhost", 80) or 
 		netannounce(TCP, "127.0.0.1", 80) or netannounce(TCP, 0, 80).
 
-int netaccept(int fd, char *server, int *port)
+int netaccept6(int fd, char *server, int *port)
 
-	Get the next connection that comes in to the listener fd.
+	Get the next connection that comes in to the listener fd ipv6.
 	Returns a fd to use to talk to the guy who just connected.
 	If server is not null, it must point at a buffer of at least
 	16 bytes that is filled in with the remote IP address.
 	If port is not null, it is filled in with the report port.
 	Example:
-		char server[16];
+		char server[46];
 		int port;
 		
-		if(netaccept(fd, server, &port) >= 0)
+		if(netaccept6(fd, server, &port) >= 0)
 			printf("connect from %s:%d", server, port);
 
 int netdial(int proto, char *name, int port)
